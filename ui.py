@@ -1,10 +1,19 @@
 import tkinter as tk
 from tkinter import ttk
-import uart_client as uc
+
 import serial
 import time
 import queue
 import threading
+from serial.tools import list_ports
+# Find msp432 launchpad port
+def find_launchpad_port():
+    TI_VID = 0x0451
+    XDS110_PID = 0xbef3 # XDS110PID
+    for port in list_ports.comports():
+        if port.vid == TI_VID and port.pid == XDS110_PID:
+            return port.device
+    return None
 
 
 separator = '\n'
@@ -80,8 +89,11 @@ class UartApp:
         def update():
                 self.message_display.config(text=message)
         self.root.after(0, update)
+
+
+#########################################################################
     def init_connection(self):
-        self.port = uc.find_launchpad_port()
+        self.port = find_launchpad_port()
         # self.port = '/dev/tty.usbmodem101'
         if not self.port:
             self.connection_status.config(text="MSP432 Launchpad not found!")
@@ -99,7 +111,7 @@ class UartApp:
             time.sleep(0.1)
 
 
-            #self.ser.write(("STARTED"+"$").encode("ascii"))
+
             self.reader = threading.Thread(target=self.read_from_port)
             self.reader.start()
 
@@ -108,6 +120,8 @@ class UartApp:
 
         except serial.SerialException as e:
             self.display_message(f"serial error: {e}")
+#########################################################################
+
     def read_from_port(self):
         buffer = bytearray()
         while self.running:
@@ -116,7 +130,7 @@ class UartApp:
                 if self.ser.in_waiting >0:
                     data=self.ser.read(self.ser.in_waiting)
                     buffer.extend(data)
-                    self.display_message("current " +buffer.decode('ascii'))
+                    #self.display_message("current " +buffer.decode('ascii'))
                     if b'\0' in buffer:
                         message, _, remaining = buffer.partition(b'\0')
 
@@ -124,7 +138,7 @@ class UartApp:
                             self.display_message(message.decode('ascii'))
                         buffer = remaining
             except :
-
+                #self.display_message("error has occured while reading")
                 continue
             time.sleep(0.01)
     def write_to_port(self):
@@ -137,6 +151,7 @@ class UartApp:
 
                 self.ser.write(next.encode('ascii'))
             except:
+                #self.display_message("error has occured while writing")
                 continue
     def on_close(self):
         self.running= False
