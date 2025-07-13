@@ -15,6 +15,13 @@ def find_launchpad_port():
             return port.device
     return None
 
+def find_arduino_port():
+    ELEGOO_VID = 0x2341
+    ELEGOO_PID = 0x43 
+    for port in list_ports.comports():
+        if port.vid ==ELEGOO_VID  and port.pid == ELEGOO_PID:
+            return port.device
+    return None
 
 separator = '\n'
 class UartApp:
@@ -85,6 +92,8 @@ class UartApp:
     def on_joystick_select(self):
         """write select to uart"""
         self.writing_queue.put("CONTROLLER:SELECT")
+    def format_water_level(self,value):
+        self.writing_queue.put(f"WATER:{value}")
     def display_message(self,message):
         def update():
                 self.message_display.config(text=message)
@@ -95,8 +104,11 @@ class UartApp:
     def init_connection(self):
         self.port = find_launchpad_port()
         # self.port = '/dev/tty.usbmodem101'
+        self.arduinoPort=find_arduino_port()
         if not self.port:
             self.connection_status.config(text="MSP432 Launchpad not found!")
+        if not self.arduinoPort:
+            self.connection_status.config(text="arduino not found!")    
         try:
             self.ser = serial.Serial(
                 port=self.port,
@@ -110,6 +122,17 @@ class UartApp:
             self.ser.reset_input_buffer()
             time.sleep(0.1)
 
+            self.arduSer = serial.Serial(
+                port=self.arduinoPort,
+                baudrate=9600,
+                bytesize=serial.EIGHTBITS,
+                parity=serial.PARITY_NONE,
+                stopbits=serial.STOPBITS_ONE,
+                timeout=0.1
+            )
+            self.connection_status.config(text=f"Connected to {self.arduSer.name}")
+            self.arduSer.reset_input_buffer()
+
 
 
             self.reader = threading.Thread(target=self.read_from_port)
@@ -117,6 +140,10 @@ class UartApp:
 
             self.writer = threading.Thread(target=self.write_to_port)
             self.writer.start()
+
+
+            self.arduReader = threading.Thread(target=self.read_from_port_ard)
+            self.arduReader.start()
 
         except serial.SerialException as e:
             self.display_message(f"serial error: {e}")
@@ -163,6 +190,28 @@ class UartApp:
             self.ser.close()
         self.root.destroy()
 
+    def read_from_port_ard(self):
+        buffer = bytearray()
+        while self.running:
+
+            try:
+                if self.ser.in_waiting >0:
+                    data=self.ser.read(self.ser.in_waiting)
+                    buffer.extend(data)
+                    #self.display_message("current " +buffer.decode('ascii'))
+                    if b'\0' in buffer:
+                        message, _, remaining = buffer.partition(b'\0')
+                        if message:
+                            string = message.decode('ascii')
+                            arr = string.split(',')
+                            self.writing_queue.put(f"WATER1:{arr[0]}")
+                            self.writing_queue.put(f"WATER2:{arr[1]}")
+                            self.writing_queue.put(f"AIR:{arr[2]}")
+                        buffer = remaining
+            except :
+                #self.display_message("error has occured while reading")
+                continue
+            time.sleep(0.01)
 if __name__ == "__main__":
     root = tk.Tk()
     app = UartApp(root)
