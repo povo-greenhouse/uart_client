@@ -17,13 +17,13 @@ def find_launchpad_port():
 
 def find_arduino_port():
     ELEGOO_VID = 0x2341
-    ELEGOO_PID = 0x43 
+    ELEGOO_PID = 0x43
     for port in list_ports.comports():
         if port.vid ==ELEGOO_VID  and port.pid == ELEGOO_PID:
             return port.device
     return None
 
-separator = '\n'
+separator = '$'
 class UartApp:
     def __init__(self, root):
         self.root = root
@@ -108,7 +108,7 @@ class UartApp:
         if not self.port:
             self.connection_status.config(text="MSP432 Launchpad not found!")
         if not self.arduinoPort:
-            self.connection_status.config(text="arduino not found!")    
+            self.connection_status.config(text="arduino not found!")
         try:
             self.ser = serial.Serial(
                 port=self.port,
@@ -122,16 +122,16 @@ class UartApp:
             self.ser.reset_input_buffer()
             time.sleep(0.1)
 
-            self.arduSer = serial.Serial(
-                port=self.arduinoPort,
-                baudrate=9600,
-                bytesize=serial.EIGHTBITS,
-                parity=serial.PARITY_NONE,
-                stopbits=serial.STOPBITS_ONE,
-                timeout=0.1
-            )
-            self.connection_status.config(text=f"Connected to {self.arduSer.name}")
-            self.arduSer.reset_input_buffer()
+            # self.arduSer = serial.Serial(
+            #     port=self.arduinoPort,
+            #     baudrate=9600,
+            #     bytesize=serial.EIGHTBITS,
+            #     parity=serial.PARITY_NONE,
+            #     stopbits=serial.STOPBITS_ONE,
+            #     timeout=0.1
+            # )
+            #self.connection_status.config(text=f"Connected to {self.arduSer.name}")
+            #self.arduSer.reset_input_buffer()
 
 
 
@@ -142,8 +142,8 @@ class UartApp:
             self.writer.start()
 
 
-            self.arduReader = threading.Thread(target=self.read_from_port_ard)
-            self.arduReader.start()
+            #self.arduReader = threading.Thread(target=self.read_from_port_ard)
+            #self.arduReader.start()
 
         except serial.SerialException as e:
             self.display_message(f"serial error: {e}")
@@ -173,10 +173,11 @@ class UartApp:
         while self.running:
             try:
                 next = self.writing_queue.get(timeout=0.1)
-
-                next = next + separator
-
+                #self.connection_status.config(text=next)
+                next = next +" " +separator
+                self.connection_status.config(text=next)
                 self.ser.write(next.encode('ascii'))
+                time.sleep(0.1)
             except:
                 #self.display_message("error has occured while writing")
                 continue
@@ -186,7 +187,11 @@ class UartApp:
             self.reader.join()
         if(hasattr(self,'writer')):
             self.writer.join()
+        if(hasattr(self,'arduReader')):
+            self.arduReader.join()
         if (hasattr(self,'ser') and self.ser.is_open):
+            self.ser.close()
+        if (hasattr(self,'arduSer') and self.arduSer.is_open):
             self.ser.close()
         self.root.destroy()
 
@@ -195,18 +200,19 @@ class UartApp:
         while self.running:
 
             try:
-                if self.ser.in_waiting >0:
-                    data=self.ser.read(self.ser.in_waiting)
+                if self.arduSer.in_waiting >0:
+                    data=self.arduSer.read(self.arduSer.in_waiting)
                     buffer.extend(data)
                     #self.display_message("current " +buffer.decode('ascii'))
-                    if b'\0' in buffer:
+                    if b'\n' in buffer:
                         message, _, remaining = buffer.partition(b'\0')
                         if message:
                             string = message.decode('ascii')
                             arr = string.split(',')
-                            self.writing_queue.put(f"WATER1:{arr[0]}")
-                            self.writing_queue.put(f"WATER2:{arr[1]}")
-                            self.writing_queue.put(f"AIR:{arr[2]}")
+                            #self.connection_status.config(text=' '.join(arr))
+                            self.writing_queue.put("WATER1:"+ arr[0])
+                            self.writing_queue.put("WATER2:"+arr[1])
+                            self.writing_queue.put("AIR:"+arr[2])
                         buffer = remaining
             except :
                 #self.display_message("error has occured while reading")
